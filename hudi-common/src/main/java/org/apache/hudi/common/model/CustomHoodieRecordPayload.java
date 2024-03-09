@@ -18,11 +18,13 @@
 
 package org.apache.hudi.common.model;
 
+import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.generic.IndexedRecord;
+import org.apache.avro.generic.GenericRecordBuilder;
 
 import org.apache.hudi.common.util.Option;
-
+import java.io.IOException;
 import java.util.Properties;
 
 public class CustomHoodieRecordPayload extends DefaultHoodieRecordPayload {
@@ -35,13 +37,21 @@ public class CustomHoodieRecordPayload extends DefaultHoodieRecordPayload {
     super(record); // natural order
   }
 
-  protected boolean needUpdatingPersistedRecord(IndexedRecord currentValue,
-                                                IndexedRecord incomingRecord, Properties properties) {
-    boolean incomingIsNewer = super.needUpdatingPersistedRecord(currentValue, incomingRecord, properties);
+  @Override
+  public Option<IndexedRecord> combineAndGetUpdateValue(IndexedRecord currentValue, Schema schema, Properties properties) throws IOException {
+    Option<IndexedRecord> incomingRecordOption = super.combineAndGetUpdateValue(currentValue, schema, properties);
+    if (incomingRecordOption.isPresent()) {
+      updateTimestamp(schema, currentValue);
+    }
+    return incomingRecordOption;
+  }
+
+  private static void updateTimestamp(Schema schema, IndexedRecord currentValue) {
+    final GenericRecordBuilder builder = new GenericRecordBuilder(schema);
+    Schema.Field field = schema.getField("unsuccessful_since");
     GenericRecord current = (GenericRecord) currentValue;
-    GenericRecord incoming = (GenericRecord) incomingRecord;
-    boolean errorTypeUnchanged = overwriteField(incoming.get("error_type"), current.get("error_type"));
-    return incomingIsNewer && !errorTypeUnchanged;
+    Object previousTimestamp = current.get("timestamp");
+    builder.set(field, previousTimestamp);
   }
 
 }
