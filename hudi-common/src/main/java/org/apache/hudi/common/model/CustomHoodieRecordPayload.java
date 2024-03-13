@@ -18,16 +18,17 @@
 
 package org.apache.hudi.common.model;
 
+import org.apache.hudi.avro.HoodieAvroUtils;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.generic.IndexedRecord;
 import org.apache.avro.generic.GenericRecordBuilder;
 
 import org.apache.hudi.common.util.Option;
-import java.io.IOException;
 import java.util.Properties;
+import java.io.IOException;
 
-public class CustomHoodieRecordPayload extends DefaultHoodieRecordPayload {
+public class CustomHoodieRecordPayload extends OverwriteNonDefaultsWithLatestAvroPayload {
 
   public CustomHoodieRecordPayload(GenericRecord record, Comparable orderingVal) {
     super(record, orderingVal);
@@ -39,19 +40,37 @@ public class CustomHoodieRecordPayload extends DefaultHoodieRecordPayload {
 
   @Override
   public Option<IndexedRecord> combineAndGetUpdateValue(IndexedRecord currentValue, Schema schema, Properties properties) throws IOException {
-    Option<IndexedRecord> incomingRecordOption = super.combineAndGetUpdateValue(currentValue, schema, properties);
-    if (incomingRecordOption.isPresent()) {
-      updateTimestamp(schema, currentValue);
+    if (recordBytes.length == 0) {
+      return Option.empty();
     }
-    return incomingRecordOption;
+
+    GenericRecord incomingRecord = HoodieAvroUtils.bytesToAvro(recordBytes, schema);
+
+    if (!isDeleteRecord(incomingRecord) && !needUpdatingPersistedRecord((GenericRecord) currentValue, incomingRecord)) {
+      return Option.of(currentValue);
+    }
+
+    return super.combineAndGetUpdateValue(currentValue, schema, properties);
   }
 
-  private static void updateTimestamp(Schema schema, IndexedRecord currentValue) {
-    final GenericRecordBuilder builder = new GenericRecordBuilder(schema);
-    Schema.Field field = schema.getField("unsuccessful_since");
-    GenericRecord current = (GenericRecord) currentValue;
-    Object previousTimestamp = current.get("timestamp");
-    builder.set(field, previousTimestamp);
+  protected void setField(
+      GenericRecord baseRecord,
+      GenericRecord mergedRecord,
+      GenericRecordBuilder builder,
+      Schema.Field field) {
+    Object value = baseRecord.get(field.name());
+    value = field.schema().getType().equals(Schema.Type.STRING) && value != null ? value.toString() : value;
+    Object defaultValue = field.defaultVal();
+    String fieldName = field.name();
+    if (!overwriteField(value, defaultValue) && fieldName != "unsuccessful_since") {
+      builder.set(field, value);
+    } else {
+      builder.set(field, mergedRecord.get(fieldName));
+    }
+  }
+
+  protected boolean needUpdatingPersistedRecord(GenericRecord currentValue, GenericRecord incomingRecord) {
+    return !overwriteField(incomingRecord.get("error_type"), currentValue.get("error_type"));
   }
 
 }
