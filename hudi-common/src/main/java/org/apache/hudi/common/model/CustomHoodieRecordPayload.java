@@ -21,8 +21,11 @@
  import org.apache.avro.Schema;
  import org.apache.avro.generic.GenericRecord;
  import org.apache.avro.generic.GenericRecordBuilder;
- 
- import org.apache.hudi.common.util.Option;
+import org.apache.avro.generic.IndexedRecord;
+import org.apache.hudi.common.util.Option;
+
+ import java.io.IOException;
+ import java.util.List;
  
  public class CustomHoodieRecordPayload extends OverwriteNonDefaultsWithLatestAvroPayload {
  
@@ -34,19 +37,32 @@
      super(record); // natural order
    }
  
-   protected void setField(
-       GenericRecord baseRecord,
-       GenericRecord mergedRecord,
-       GenericRecordBuilder builder,
-       Schema.Field field) {
-     Object value = baseRecord.get(field.name());
-     value = field.schema().getType().equals(Schema.Type.STRING) && value != null ? value.toString() : value;
-     Object defaultValue = field.defaultVal();
-     String fieldName = field.name();
-     if (!overwriteField(value, defaultValue) && fieldName != "unsuccessful_since") {
-       builder.set(field, value);
-     } else {
-       builder.set(field, mergedRecord.get(fieldName));
-     }
-   } 
+   @Override
+   public Option<IndexedRecord> combineAndGetUpdateValue(IndexedRecord currentValue, Schema schema) throws IOException {
+    Option<IndexedRecord> recordOption = getInsertValue(schema);
+    if (!recordOption.isPresent()) {
+      return Option.empty();
+    }
+
+    GenericRecord baseRecord = (GenericRecord) recordOption.get();
+    GenericRecord mergedRecord = (GenericRecord) currentValue;
+
+    if (isDeleteRecord(baseRecord)) {
+      return Option.empty();
+    } else {
+      final GenericRecordBuilder builder = new GenericRecordBuilder(schema);
+      List<Schema.Field> fields = schema.getFields();
+      for (Schema.Field field : fields) {
+        Object value = baseRecord.get(field.name());
+        value = field.schema().getType().equals(Schema.Type.STRING) && value != null ? value.toString() : value;
+        if(field.name().equals("unsuccessful_since") || overwriteField(value, field.defaultVal())){
+          builder.set(field, mergedRecord.get(field.name()));
+        }
+        else {
+          builder.set(field, value);
+        }
+      }
+      return Option.of(builder.build());
+    }
+  }
  }
