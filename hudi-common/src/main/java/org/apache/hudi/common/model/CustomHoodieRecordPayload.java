@@ -55,7 +55,10 @@ import org.apache.hudi.common.util.Option;
       for (Schema.Field field : fields) {
         Object value = baseRecord.get(field.name());
         value = field.schema().getType().equals(Schema.Type.STRING) && value != null ? value.toString() : value;
-        if(field.name().equals("unsuccessful_since") || overwriteField(value, field.defaultVal())){
+        if (field.name().equals("creation_hoodie_commit_time")) {
+          builder.set(field, mergedRecord.get("_hoodie_commit_time"));
+        }
+        else if(field.name().equals("unsuccessful_since") || overwriteField(value, field.defaultVal())){
           builder.set(field, mergedRecord.get(field.name()));
         }
         else {
