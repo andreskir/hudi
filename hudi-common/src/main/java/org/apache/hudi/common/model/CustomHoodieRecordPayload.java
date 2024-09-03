@@ -53,13 +53,15 @@ import org.apache.hudi.common.util.Option;
       final GenericRecordBuilder builder = new GenericRecordBuilder(schema);
       List<Schema.Field> fields = schema.getFields();
       for (Schema.Field field : fields) {
-        Object value = baseRecord.get(field.name());
+        String fieldName = field.name();
+        Object value = baseRecord.get(fieldName);
         value = field.schema().getType().equals(Schema.Type.STRING) && value != null ? value.toString() : value;
-        if (field.name().equals("creation_hoodie_commit_time")) {
-          builder.set(field, mergedRecord.get("_hoodie_commit_time"));
+        if (fieldName.equals("creation_hoodie_commit_time")) {
+          Object persistedValue = mergedRecord.get(fieldName);
+          builder.set(field, persistedValue != null ? persistedValue : mergedRecord.get("_hoodie_commit_time"));
         }
-        else if(field.name().equals("unsuccessful_since") || overwriteField(value, field.defaultVal())){
-          builder.set(field, mergedRecord.get(field.name()));
+        else if(fieldName.equals("unsuccessful_since") || overwriteField(value, field.defaultVal())){
+          builder.set(field, mergedRecord.get(fieldName));
         }
         else {
           builder.set(field, value);
