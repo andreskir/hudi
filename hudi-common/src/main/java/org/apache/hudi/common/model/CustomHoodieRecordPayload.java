@@ -52,6 +52,8 @@ import org.apache.hudi.common.util.Option;
     } else {
       final GenericRecordBuilder builder = new GenericRecordBuilder(schema);
       List<Schema.Field> fields = schema.getFields();
+      boolean hasOverwriteField = fields.stream().anyMatch(f -> "overwrite".equals(f.name()));
+      boolean ignore = hasOverwriteField && baseRecord.get("overwrite") != null && Boolean.FALSE.equals(baseRecord.get("overwrite"));
       for (Schema.Field field : fields) {
         String fieldName = field.name();
         Object value = baseRecord.get(fieldName);
@@ -60,7 +62,7 @@ import org.apache.hudi.common.util.Option;
           Object persistedValue = mergedRecord.get(fieldName);
           builder.set(field, persistedValue != null ? persistedValue : mergedRecord.get("_hoodie_commit_time"));
         }
-        else if(fieldName.equals("unsuccessful_since") || overwriteField(value, field.defaultVal())){
+        else if(ignore || fieldName.equals("unsuccessful_since") || overwriteField(value, field.defaultVal())){
           builder.set(field, mergedRecord.get(fieldName));
         }
         else {
